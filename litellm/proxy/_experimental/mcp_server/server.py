@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import ConfigDict, ValidationError
 
+from litellm._version import version
 from litellm._logging import verbose_logger
 from litellm.constants import MCP_TOOL_NAME_PREFIX
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
@@ -19,20 +20,33 @@ from litellm.types.mcp_server.mcp_server_manager import MCPInfo
 from litellm.types.utils import StandardLoggingMCPToolCall
 from litellm.utils import client
 
+router = APIRouter(
+    prefix="/mcp",
+    tags=["mcp"],
+)
+
 # Check if MCP is available
 # "mcp" requires python 3.10 or higher, but several litellm users use python 3.8
 # We're making this conditional import to avoid breaking users who use python 3.8.
+# TODO: Make this a util function for litellm client usage
+MCP_AVAILABLE: bool = True
 try:
     from mcp.server import Server
-
-    MCP_AVAILABLE = True
 except ImportError as e:
     verbose_logger.debug(f"MCP module not found: {e}")
     MCP_AVAILABLE = False
-    router = APIRouter(
-        prefix="/mcp",
-        tags=["mcp"],
-    )
+
+
+# Routes
+@router.get(
+    "/enabled",
+    description="Returns if the MCP server is enabled",
+)
+def get_mcp_server_enabled() -> Dict[str, bool]:
+    """
+    Returns if the MCP server is enabled
+    """
+    return {"mcp_enabled": MCP_AVAILABLE}
 
 
 if MCP_AVAILABLE:
@@ -63,10 +77,6 @@ if MCP_AVAILABLE:
     ########################################################
     ############ Initialize the MCP Server #################
     ########################################################
-    router = APIRouter(
-        prefix="/mcp",
-        tags=["mcp"],
-    )
     server: Server = Server("litellm-mcp-server")
     sse: SseServerTransport = SseServerTransport("/mcp/sse/messages")
 

@@ -6,24 +6,13 @@ import Image from '@theme/IdealImage';
 
 # /mcp [BETA] - Model Context Protocol
 
-## Expose MCP tools on LiteLLM Proxy Server
+LiteLLM ships with many different modes of operation for MCP capabilities. As of now, it is only focused on MCP's tools.
 
-This allows you to define tools that can be called by any MCP compatible client. Define your `mcp_servers` with LiteLLM and all your clients can list and call available tools.
+> _Note_: MCP requires python>=3.10, so MCP will not be enabled if this requirement is not met
 
-<Image 
-  img={require('../img/mcp_2.png')}
-  style={{width: '100%', display: 'block', margin: '2rem auto'}}
-/>
-<p style={{textAlign: 'left', color: '#666'}}>
-  LiteLLM MCP Architecture: Use MCP tools with all LiteLLM supported models
-</p>
-
-#### How it works
-
-LiteLLM exposes the following MCP endpoints:
-
-- `/mcp/tools/list` - List all available tools
-- `/mcp/tools/call` - Call a specific tool with the provided arguments
+1. From LiteLLM's sdk, a MCP client is packaged. Refer to [mcp client](#mcp-client)
+2. LiteLLM's Proxy acts as a MCP server where you can add customized tools directly. Refer to ...
+3. LiteLLM's Proxy acts as a MCP "bridge" where you can add, remove, and restrict access to external MCP servers combining all tools with ease. Refer to .....
 
 When MCP clients connect to LiteLLM they can follow this workflow:
 
@@ -35,148 +24,11 @@ When MCP clients connect to LiteLLM they can follow this workflow:
 6. LiteLLM makes the tool calls to the appropriate MCP server
 7. LiteLLM returns the tool call results to the MCP client
 
-#### Usage
+[Here](#proxy-usage) is the starting point for all the endpoints LiteLLM Proxy exposes for MCP.
 
-#### 1. Define your tools on under `mcp_servers` in your config.yaml file.
+## MCP Client
 
-LiteLLM allows you to define your tools on the `mcp_servers` section in your config.yaml file. All tools listed here will be available to MCP clients (when they connect to LiteLLM and call `list_tools`).
-
-```yaml title="config.yaml" showLineNumbers
-model_list:
-  - model_name: gpt-4o
-    litellm_params:
-      model: openai/gpt-4o
-      api_key: sk-xxxxxxx
-
-mcp_servers:
-  {
-    "zapier_mcp": {
-      "url": "https://actions.zapier.com/mcp/sk-akxxxxx/sse"
-    },
-    "fetch": {
-      "url": "http://localhost:8000/sse"
-    }
-  }
-```
-
-
-#### 2. Start LiteLLM Gateway
-
-<Tabs>
-<TabItem value="docker" label="Docker Run">
-
-```shell title="Docker Run" showLineNumbers
-docker run -d \
-  -p 4000:4000 \
-  -e OPENAI_API_KEY=$OPENAI_API_KEY \
-  --name my-app \
-  -v $(pwd)/my_config.yaml:/app/config.yaml \
-  my-app:latest \
-  --config /app/config.yaml \
-  --port 4000 \
-  --detailed_debug \
-```
-
-</TabItem>
-
-<TabItem value="py" label="litellm pip">
-
-```shell title="litellm pip" showLineNumbers
-litellm --config config.yaml --detailed_debug
-```
-
-</TabItem>
-</Tabs>
-
-
-#### 3. Make an LLM API request 
-
-In this example we will do the following:
-
-1. Use MCP client to list MCP tools on LiteLLM Proxy
-2. Use `transform_mcp_tool_to_openai_tool` to convert MCP tools to OpenAI tools
-3. Provide the MCP tools to `gpt-4o`
-4. Handle tool call from `gpt-4o`
-5. Convert OpenAI tool call to MCP tool call
-6. Execute tool call on MCP server
-
-```python title="MCP Client List Tools" showLineNumbers
-import asyncio
-from openai import AsyncOpenAI
-from openai.types.chat import ChatCompletionUserMessageParam
-from mcp import ClientSession
-from mcp.client.sse import sse_client
-from litellm.experimental_mcp_client.tools import (
-    transform_mcp_tool_to_openai_tool,
-    transform_openai_tool_call_request_to_mcp_tool_call_request,
-)
-
-
-async def main():
-    # Initialize clients
-    
-    # point OpenAI client to LiteLLM Proxy
-    client = AsyncOpenAI(api_key="sk-1234", base_url="http://localhost:4000")
-
-    # Point MCP client to LiteLLM Proxy
-    async with sse_client("http://localhost:4000/mcp/") as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-
-            # 1. List MCP tools on LiteLLM Proxy
-            mcp_tools = await session.list_tools()
-            print("List of MCP tools for MCP server:", mcp_tools.tools)
-
-            # Create message
-            messages = [
-                ChatCompletionUserMessageParam(
-                    content="Send an email about LiteLLM supporting MCP", role="user"
-                )
-            ]
-
-            # 2. Use `transform_mcp_tool_to_openai_tool` to convert MCP tools to OpenAI tools
-            # Since OpenAI only supports tools in the OpenAI format, we need to convert the MCP tools to the OpenAI format.
-            openai_tools = [
-                transform_mcp_tool_to_openai_tool(tool) for tool in mcp_tools.tools
-            ]
-
-            # 3. Provide the MCP tools to `gpt-4o`
-            response = await client.chat.completions.create(
-                model="gpt-4o",
-                messages=messages,
-                tools=openai_tools,
-                tool_choice="auto",
-            )
-
-            # 4. Handle tool call from `gpt-4o`
-            if response.choices[0].message.tool_calls:
-                tool_call = response.choices[0].message.tool_calls[0]
-                if tool_call:
-
-                    # 5. Convert OpenAI tool call to MCP tool call
-                    # Since MCP servers expect tools in the MCP format, we need to convert the OpenAI tool call to the MCP format.
-                    # This is done using litellm.experimental_mcp_client.tools.transform_openai_tool_call_request_to_mcp_tool_call_request
-                    mcp_call = (
-                        transform_openai_tool_call_request_to_mcp_tool_call_request(
-                            openai_tool=tool_call.model_dump()
-                        )
-                    )
-
-                    # 6. Execute tool call on MCP server
-                    result = await session.call_tool(
-                        name=mcp_call.name, arguments=mcp_call.arguments
-                    )
-
-                    print("Result:", result)
-
-
-# Run it
-asyncio.run(main())
-```
-
-## LiteLLM Python SDK MCP Bridge
-
-LiteLLM Python SDK acts as a MCP bridge to utilize MCP tools with all LiteLLM supported models. LiteLLM offers the following features for using MCP
+LiteLLM's SDK has transformers to utilize MCP tools with all LiteLLM supported models. LiteLLM offers the following features for using MCP
 
 - **List** Available MCP Tools: OpenAI clients can view all available MCP tools
   - `litellm.experimental_mcp_client.load_mcp_tools` to list all available MCP tools
@@ -188,7 +40,7 @@ LiteLLM Python SDK acts as a MCP bridge to utilize MCP tools with all LiteLLM su
 
 In this example we'll use `litellm.experimental_mcp_client.load_mcp_tools` to list all available MCP tools on any MCP server. This method can be used in two ways:
 
-- `format="mcp"` - (default) Return MCP tools 
+- `format="mcp"` - (default) Return MCP tools
   - Returns: `mcp.types.Tool`
 - `format="openai"` - Return MCP tools converted to OpenAI API compatible tools. Allows using with OpenAI endpoints.
   - Returns: `openai.types.chat.ChatCompletionToolParam`
@@ -427,3 +279,175 @@ async with stdio_client(server_params) as (read, write):
 
 </TabItem>
 </Tabs>
+
+## Proxy Usage
+
+LiteLLM exposes the following MCP endpoints:
+
+- GET`/mcp/enabled` - Returns if MCP is enabled (python>=3.10 requirements are met)
+- `/mcp/tools/list` - List all available tools
+- `/mcp/tools/call` - Call a specific tool with the provided arguments
+- GET `/v1/mcp/server` - Returns all of the configured mcp servers in the db
+- GET `/v1/mcp/server/{server_id}` - Returns the info of the specific mcp server given `server_id`
+- GET `/v1/mcp/server/{server_id}/tools` - Get all the tools from the mcp server specified by the `server_id`
+- POST `/v1/mcp/server` - Add a new external mcp server.
+- DELETE `/v1/mcp/server/{server_id}` - Deletes the mcp server given `server_id`.
+
+### Expose MCP tools on LiteLLM Proxy Server
+
+This allows you to define tools that can be called by any MCP compatible client. Define your `mcp_servers` directly with LiteLLM config and all your clients can list and call available tools.
+
+<Image
+  img={require('../img/mcp_2.png')}
+  style={{width: '100%', display: 'block', margin: '2rem auto'}}
+/>
+<p style={{textAlign: 'left', color: '#666'}}>
+  LiteLLM MCP Architecture: Use MCP tools with all LiteLLM supported models
+</p>
+
+#### Usage
+
+#### 1. Define `mcp_servers` in config
+
+LiteLLM allows you to define your tools on the `mcp_servers` section in your config.yaml file. All tools listed here will be available to MCP clients (when they connect to LiteLLM and call `list_tools`).
+
+```yaml title="config.yaml" showLineNumbers
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: sk-xxxxxxx
+
+mcp_servers:
+  zapier_mcp:
+    url: "https://actions.zapier.com/mcp/sk-akxxxxx/sse"
+  fetch:
+    url: "http://localhost:8000/sse"
+```
+
+Additional options for the mcp_server is:
+
+```yaml
+mcp_servers:
+  local_server:
+    url: "http://localhost:8000/mcp"
+    description: "mcp server description",
+    transport: "http", # one of (http|sse) - defaults to sse
+    spec_version: "2025-03-26", # one of (2024-11-05|2025-03-26) - defaults to 2025-03-26
+    auth_type: API_KEY, # one of (API_KEY|BASIC|BEARER_TOKEN) defaults to no auth
+```
+
+---
+
+#### 2. Start LiteLLM Gateway
+
+<Tabs>
+<TabItem value="docker" label="Docker Run">
+
+```shell title="Docker Run" showLineNumbers
+docker run -d \
+  -p 4000:4000 \
+  -e OPENAI_API_KEY=$OPENAI_API_KEY \
+  --name my-app \
+  -v $(pwd)/my_config.yaml:/app/config.yaml \
+  my-app:latest \
+  --config /app/config.yaml \
+  --port 4000 \
+  --detailed_debug \
+```
+
+</TabItem>
+
+<TabItem value="py" label="litellm pip">
+
+```shell title="litellm pip" showLineNumbers
+litellm --config config.yaml --detailed_debug
+```
+
+</TabItem>
+</Tabs>
+
+#### 3. Make an LLM API request
+
+In this example we will do the following:
+
+1. Use MCP client to list MCP tools on LiteLLM Proxy
+2. Use `transform_mcp_tool_to_openai_tool` to convert MCP tools to OpenAI tools
+3. Provide the MCP tools to `gpt-4o`
+4. Handle tool call from `gpt-4o`
+5. Convert OpenAI tool call to MCP tool call
+6. Execute tool call on MCP server
+
+```python title="MCP Client List Tools" showLineNumbers
+import asyncio
+from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionUserMessageParam
+from mcp import ClientSession
+from mcp.client.sse import sse_client
+from litellm.experimental_mcp_client.tools import (
+    transform_mcp_tool_to_openai_tool,
+    transform_openai_tool_call_request_to_mcp_tool_call_request,
+)
+
+
+async def main():
+    # Initialize clients
+    
+    # point OpenAI client to LiteLLM Proxy
+    client = AsyncOpenAI(api_key="sk-1234", base_url="http://localhost:4000")
+
+    # Point MCP client to LiteLLM Proxy
+    async with sse_client("http://localhost:4000/mcp/") as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            # 1. List MCP tools on LiteLLM Proxy
+            mcp_tools = await session.list_tools()
+            print("List of MCP tools for MCP server:", mcp_tools.tools)
+
+            # Create message
+            messages = [
+                ChatCompletionUserMessageParam(
+                    content="Send an email about LiteLLM supporting MCP", role="user"
+                )
+            ]
+
+            # 2. Use `transform_mcp_tool_to_openai_tool` to convert MCP tools to OpenAI tools
+            # Since OpenAI only supports tools in the OpenAI format, we need to convert the MCP tools to the OpenAI format.
+            openai_tools = [
+                transform_mcp_tool_to_openai_tool(tool) for tool in mcp_tools.tools
+            ]
+
+            # 3. Provide the MCP tools to `gpt-4o`
+            response = await client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                tools=openai_tools,
+                tool_choice="auto",
+            )
+
+            # 4. Handle tool call from `gpt-4o`
+            if response.choices[0].message.tool_calls:
+                tool_call = response.choices[0].message.tool_calls[0]
+                if tool_call:
+
+                    # 5. Convert OpenAI tool call to MCP tool call
+                    # Since MCP servers expect tools in the MCP format, we need to convert the OpenAI tool call to the MCP format.
+                    # This is done using litellm.experimental_mcp_client.tools.transform_openai_tool_call_request_to_mcp_tool_call_request
+                    mcp_call = (
+                        transform_openai_tool_call_request_to_mcp_tool_call_request(
+                            openai_tool=tool_call.model_dump()
+                        )
+                    )
+
+                    # 6. Execute tool call on MCP server
+                    result = await session.call_tool(
+                        name=mcp_call.name, arguments=mcp_call.arguments
+                    )
+
+                    print("Result:", result)
+
+
+# Run it
+asyncio.run(main())
+```

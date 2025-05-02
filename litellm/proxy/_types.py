@@ -345,8 +345,8 @@ class LiteLLMRoutes(enum.Enum):
         "/key/list",
         "/user/filter/ui",
         # mcp servers
-        "/v1/mcp",
-        "/v1/mcp/info",
+        "/v1/mcp/server",
+        "/v1/mcp/server/*/tools",
     ]
 
     # NOTE: ROUTES ONLY FOR MASTER KEY - only the Master Key should be able to Reset Spend
@@ -388,8 +388,7 @@ class LiteLLMRoutes(enum.Enum):
         "/model/delete",
         "/model/info",
         # mcp servers
-        "/v1/mcp",
-        "/v1/mcp/delete",
+        "/v1/mcp/server",
     ] + key_management_routes
 
     spend_tracking_routes = [
