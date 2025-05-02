@@ -50,10 +50,14 @@ class MCPServerManager:
             _mcp_info: dict = server_config.get("mcp_info", None) or {}
             mcp_info = MCPInfo(**_mcp_info)
             mcp_info["server_name"] = server_name
+            mcp_info["description"] = server_config.get("description", None)
             self.mcp_servers.append(
                 MCPSSEServer(
                     name=server_name,
                     url=server_config["url"],
+                    transport=server_config.get("transport", "sse"),
+                    spec_version=server_config.get("spec_version", "2025-03-26"),
+                    auth_type=server_config.get("auth_type", None),
                     mcp_info=mcp_info,
                 )
             )
