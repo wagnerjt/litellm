@@ -6,7 +6,7 @@ import asyncio
 from typing import Any, Dict, List, Optional, Union
 
 from anyio import BrokenResourceError
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import ConfigDict, ValidationError
 
@@ -93,9 +93,7 @@ if MCP_AVAILABLE:
                     inputSchema=tool.input_schema,
                 )
             )
-        verbose_logger.debug(
-            "GLOBAL MCP TOOLS: %s", global_mcp_tool_registry.list_tools()
-        )
+        verbose_logger.debug("GLOBAL MCP TOOLS: %s", global_mcp_tool_registry.list_tools())
         sse_tools: List[MCPTool] = await global_mcp_server_manager.list_tools()
         verbose_logger.debug("SSE TOOLS: %s", sse_tools)
         if sse_tools is not None:
@@ -134,28 +132,20 @@ if MCP_AVAILABLE:
         Call a specific tool with the provided arguments
         """
         if arguments is None:
-            raise HTTPException(
-                status_code=400, detail="Request arguments are required"
-            )
+            raise HTTPException(status_code=400, detail="Request arguments are required")
 
-        standard_logging_mcp_tool_call: StandardLoggingMCPToolCall = (
-            _get_standard_logging_mcp_tool_call(
-                name=name,
-                arguments=arguments,
-            )
+        standard_logging_mcp_tool_call: StandardLoggingMCPToolCall = _get_standard_logging_mcp_tool_call(
+            name=name,
+            arguments=arguments,
         )
-        litellm_logging_obj: Optional[LiteLLMLoggingObj] = kwargs.get(
-            "litellm_logging_obj", None
-        )
+        litellm_logging_obj: Optional[LiteLLMLoggingObj] = kwargs.get("litellm_logging_obj", None)
         if litellm_logging_obj:
-            litellm_logging_obj.model_call_details["mcp_tool_call_metadata"] = (
-                standard_logging_mcp_tool_call
-            )
+            litellm_logging_obj.model_call_details["mcp_tool_call_metadata"] = standard_logging_mcp_tool_call
             litellm_logging_obj.model_call_details["model"] = (
                 f"{MCP_TOOL_NAME_PREFIX}: {standard_logging_mcp_tool_call.get('name') or ''}"
             )
-            litellm_logging_obj.model_call_details["custom_llm_provider"] = (
-                standard_logging_mcp_tool_call.get("mcp_server_name")
+            litellm_logging_obj.model_call_details["custom_llm_provider"] = standard_logging_mcp_tool_call.get(
+                "mcp_server_name"
             )
 
         # Try managed server tool first

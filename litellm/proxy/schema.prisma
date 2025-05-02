@@ -110,6 +110,7 @@ model LiteLLM_TeamTable {
     model_id Int? @unique // id for LiteLLM_ModelTable -> stores team-level model aliases
     litellm_organization_table LiteLLM_OrganizationTable?   @relation(fields: [organization_id], references: [organization_id])
     litellm_model_table LiteLLM_ModelTable? @relation(fields: [model_id], references: [id])
+    // mcp_servers LiteLLM_MCPServerTable? @relation(fields: [model_id], references: [id])
 }
 
 // Track spend, rate limit, budget Users
@@ -146,6 +147,41 @@ model LiteLLM_UserTable {
     invitations_user    LiteLLM_InvitationLink[] @relation("UserId")
 }
 
+// Holds the MCP server configuration 
+enum MCPTransport {
+  HTTP // Streamable http
+  SSE
+}
+
+enum MCPSpecVersion {
+  V_2025_03_26
+  V_2024_11_05
+}
+
+enum MCPAuthType {
+  NONE
+  API_KEY
+  BEARER_TOKEN
+  BASIC
+}
+
+model LiteLLM_MCPServerTable {
+  server_id    String         @id @default(uuid())
+  alias        String?
+  description  String?
+  url          String
+  transport    String         @default("http")
+  spec_version String         @default("2025-03-26")
+  auth_type    String?        
+  // transport    MCPTransport   @default(HTTP)
+  // spec_version MCPSpecVersion @default(MAR_2025)
+  // auth_type    MCPAuthType    @default(NONE)
+  created_at   DateTime?      @default(now()) @map("created_at")
+  created_by   String?
+  updated_at   DateTime?      @default(now()) @updatedAt @map("updated_at")
+  updated_by   String?
+}
+
 // Generate Tokens for Proxy
 model LiteLLM_VerificationToken {
     token      String   @id
@@ -173,6 +209,7 @@ model LiteLLM_VerificationToken {
     model_spend      Json @default("{}")
     model_max_budget Json @default("{}")
     budget_id String?
+    mcp_servers String[]
     organization_id String?
     created_at      DateTime?               @default(now()) @map("created_at")
     created_by String?

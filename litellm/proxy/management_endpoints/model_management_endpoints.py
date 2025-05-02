@@ -3,7 +3,7 @@ Allow proxy admin to add/update/delete models in the db
 
 Currently most endpoints are in `proxy_server.py`, but those should  be moved here over time.
 
-Endpoints here: 
+Endpoints here:
 
 model/{model_id}/update - PATCH endpoint for model update.
 """
@@ -54,14 +54,10 @@ from litellm.utils import get_utc_datetime
 router = APIRouter()
 
 
-async def get_db_model(
-    model_id: str, prisma_client: PrismaClient
-) -> Optional[Deployment]:
+async def get_db_model(model_id: str, prisma_client: PrismaClient) -> Optional[Deployment]:
     db_model = cast(
         Optional[BaseModel],
-        await prisma_client.db.litellm_proxymodeltable.find_unique(
-            where={"model_id": model_id}
-        ),
+        await prisma_client.db.litellm_proxymodeltable.find_unique(where={"model_id": model_id}),
     )
 
     if not db_model:
@@ -71,9 +67,7 @@ async def get_db_model(
     return deployment_pydantic_obj
 
 
-def update_db_model(
-    db_model: Deployment, updated_patch: updateDeployment
-) -> PrismaCompatibleUpdateDBModel:
+def update_db_model(db_model: Deployment, updated_patch: updateDeployment) -> PrismaCompatibleUpdateDBModel:
     merged_deployment_dict = DeploymentTypedDict(
         model_name=db_model.model_name,
         litellm_params=LiteLLMParamsTypedDict(
@@ -88,10 +82,7 @@ def update_db_model(
     if updated_patch.litellm_params:
         # Encrypt any sensitive values
         encrypted_params = {
-            k: encrypt_value_helper(v)
-            for k, v in updated_patch.litellm_params.model_dump(
-                exclude_none=True
-            ).items()
+            k: encrypt_value_helper(v) for k, v in updated_patch.litellm_params.model_dump(exclude_none=True).items()
         }
 
         merged_deployment_dict["litellm_params"].update(encrypted_params)  # type: ignore
@@ -100,27 +91,19 @@ def update_db_model(
     if updated_patch.model_info:
         if "model_info" not in merged_deployment_dict:
             merged_deployment_dict["model_info"] = {}
-        merged_deployment_dict["model_info"].update(
-            updated_patch.model_info.model_dump(exclude_none=True)
-        )
+        merged_deployment_dict["model_info"].update(updated_patch.model_info.model_dump(exclude_none=True))
 
     # convert to prisma compatible format
 
     prisma_compatible_model_dict = PrismaCompatibleUpdateDBModel()
     if "model_name" in merged_deployment_dict:
-        prisma_compatible_model_dict["model_name"] = merged_deployment_dict[
-            "model_name"
-        ]
+        prisma_compatible_model_dict["model_name"] = merged_deployment_dict["model_name"]
 
     if "litellm_params" in merged_deployment_dict:
-        prisma_compatible_model_dict["litellm_params"] = json.dumps(
-            merged_deployment_dict["litellm_params"]
-        )
+        prisma_compatible_model_dict["litellm_params"] = json.dumps(merged_deployment_dict["litellm_params"])
 
     if "model_info" in merged_deployment_dict:
-        prisma_compatible_model_dict["model_info"] = json.dumps(
-            merged_deployment_dict["model_info"]
-        )
+        prisma_compatible_model_dict["model_info"] = json.dumps(merged_deployment_dict["model_info"])
     return prisma_compatible_model_dict
 
 
@@ -197,9 +180,7 @@ async def patch_model(
         update_data = update_db_model(db_model=db_model, updated_patch=patch_data)
 
         # Add metadata about update
-        update_data["updated_by"] = (
-            user_api_key_dict.user_id or litellm_proxy_admin_name
-        )
+        update_data["updated_by"] = user_api_key_dict.user_id or litellm_proxy_admin_name
         update_data["updated_at"] = cast(str, get_utc_datetime())
 
         # Perform partial update
@@ -241,9 +222,7 @@ async def _add_model_to_db(
     _litellm_params_dict = model_params.litellm_params.dict(exclude_none=True)
     _orignal_litellm_model_name = model_params.litellm_params.model
     for k, v in _litellm_params_dict.items():
-        encrypted_value = encrypt_value_helper(
-            value=v, new_encryption_key=new_encryption_key
-        )
+        encrypted_value = encrypt_value_helper(value=v, new_encryption_key=new_encryption_key)
         model_params.litellm_params[k] = encrypted_value
     _data: dict = {
         "model_id": model_params.model_info.id,
@@ -336,14 +315,9 @@ class ModelManagementAuthChecks:
                 status_code=403,
                 detail={"error": CommonProxyErrors.not_premium_user.value},
             )
-        if (
-            user_api_key_dict.user_role
-            and user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN
-        ):
+        if user_api_key_dict.user_role and user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN:
             return True
-        elif team_obj is None or not _is_user_team_admin(
-            user_api_key_dict=user_api_key_dict, team_obj=team_obj
-        ):
+        elif team_obj is None or not _is_user_team_admin(user_api_key_dict=user_api_key_dict, team_obj=team_obj):
             raise HTTPException(
                 status_code=403,
                 detail={
@@ -376,11 +350,7 @@ class ModelManagementAuthChecks:
         if _existing_team_row is None:
             raise HTTPException(
                 status_code=400,
-                detail={
-                    "error": "Team id={} does not exist in db".format(
-                        model_params.model_info.team_id
-                    )
-                },
+                detail={"error": "Team id={} does not exist in db".format(model_params.model_info.team_id)},
             )
         existing_team_row = LiteLLM_TeamTable(**_existing_team_row.model_dump())
 
@@ -400,21 +370,14 @@ class ModelManagementAuthChecks:
         premium_user: bool,
     ) -> Literal[True]:
         ## Check team model auth
-        if (
-            model_params.model_info is not None
-            and model_params.model_info.team_id is not None
-        ):
+        if model_params.model_info is not None and model_params.model_info.team_id is not None:
             team_obj_row = await prisma_client.db.litellm_teamtable.find_unique(
                 where={"team_id": model_params.model_info.team_id}
             )
             if team_obj_row is None:
                 raise HTTPException(
                     status_code=400,
-                    detail={
-                        "error": "Team id={} does not exist in db".format(
-                            model_params.model_info.team_id
-                        )
-                    },
+                    detail={"error": "Team id={} does not exist in db".format(model_params.model_info.team_id)},
                 )
             team_obj = LiteLLM_TeamTable(**team_obj_row.model_dump())
 
@@ -476,9 +439,7 @@ async def delete_model(
                 },
             )
 
-        model_in_db = await prisma_client.db.litellm_proxymodeltable.find_unique(
-            where={"model_id": model_info.id}
-        )
+        model_in_db = await prisma_client.db.litellm_proxymodeltable.find_unique(where={"model_id": model_info.id})
         if model_in_db is None:
             raise HTTPException(
                 status_code=400,
@@ -500,9 +461,7 @@ async def delete_model(
             - store keys separately
             """
             # encrypt litellm params #
-            result = await prisma_client.db.litellm_proxymodeltable.delete(
-                where={"model_id": model_info.id}
-            )
+            result = await prisma_client.db.litellm_proxymodeltable.delete(where={"model_id": model_info.id})
 
             if result is None:
                 raise HTTPException(
@@ -531,15 +490,11 @@ async def delete_model(
         else:
             raise HTTPException(
                 status_code=500,
-                detail={
-                    "error": "Set `'STORE_MODEL_IN_DB='True'` in your env to enable this feature."
-                },
+                detail={"error": "Set `'STORE_MODEL_IN_DB='True'` in your env to enable this feature."},
             )
 
     except Exception as e:
-        verbose_proxy_logger.exception(
-            f"Failed to delete model. Due to error - {str(e)}"
-        )
+        verbose_proxy_logger.exception(f"Failed to delete model. Due to error - {str(e)}")
         if isinstance(e, HTTPException):
             raise ProxyException(
                 message=getattr(e, "detail", f"Authentication Error({str(e)})"),
@@ -616,9 +571,7 @@ async def add_new_model(
                         user_api_key_dict=user_api_key_dict,
                         prisma_client=prisma_client,
                     )
-                await proxy_config.add_deployment(
-                    prisma_client=prisma_client, proxy_logging_obj=proxy_logging_obj
-                )
+                await proxy_config.add_deployment(prisma_client=prisma_client, proxy_logging_obj=proxy_logging_obj)
                 # don't let failed slack alert block the /model/new response
                 _alerting = general_settings.get("alerting", []) or []
                 if "slack" in _alerting:
@@ -634,17 +587,13 @@ async def add_new_model(
         else:
             raise HTTPException(
                 status_code=500,
-                detail={
-                    "error": "Set `'STORE_MODEL_IN_DB='True'` in your env to enable this feature."
-                },
+                detail={"error": "Set `'STORE_MODEL_IN_DB='True'` in your env to enable this feature."},
             )
 
         if model_response is None:
             raise HTTPException(
                 status_code=500,
-                detail={
-                    "error": "Failed to add model to db. Check your server logs for more details."
-                },
+                detail={"error": "Failed to add model to db. Check your server logs for more details."},
             )
 
         ## CREATE AUDIT LOG ##
@@ -656,9 +605,7 @@ async def add_new_model(
                 table_name=LitellmTableNames.PROXY_MODEL_TABLE_NAME,
                 before_value=None,
                 after_value=(
-                    model_response.model_dump_json(exclude_none=True)
-                    if isinstance(model_response, BaseModel)
-                    else None
+                    model_response.model_dump_json(exclude_none=True) if isinstance(model_response, BaseModel) else None
                 ),
                 litellm_changed_by=user_api_key_dict.user_id,
                 litellm_proxy_admin_name=LITELLM_PROXY_ADMIN_NAME,
@@ -669,9 +616,7 @@ async def add_new_model(
 
     except Exception as e:
         verbose_proxy_logger.exception(
-            "litellm.proxy.proxy_server.add_new_model(): Exception occured - {}".format(
-                str(e)
-            )
+            "litellm.proxy.proxy_server.add_new_model(): Exception occured - {}".format(str(e))
         )
         if isinstance(e, HTTPException):
             raise ProxyException(
@@ -732,22 +677,15 @@ async def update_model(
         if _model_id is None:
             raise Exception("model_info.id not provided")
 
-        _existing_litellm_params = (
-            await prisma_client.db.litellm_proxymodeltable.find_unique(
-                where={"model_id": _model_id}
-            )
+        _existing_litellm_params = await prisma_client.db.litellm_proxymodeltable.find_unique(
+            where={"model_id": _model_id}
         )
 
         if _existing_litellm_params is None:
-            if (
-                llm_router is not None
-                and llm_router.get_deployment(model_id=_model_id) is not None
-            ):
+            if llm_router is not None and llm_router.get_deployment(model_id=_model_id) is not None:
                 raise HTTPException(
                     status_code=400,
-                    detail={
-                        "error": "Can't edit model. Model in config. Store model in db via `/model/new`. to edit."
-                    },
+                    detail={"error": "Can't edit model. Model in config. Store model in db via `/model/new`. to edit."},
                 )
             else:
                 raise Exception("model not found")
@@ -762,16 +700,12 @@ async def update_model(
 
         # update DB
         if store_model_in_db is True:
-            _existing_litellm_params_dict = dict(
-                _existing_litellm_params.litellm_params
-            )
+            _existing_litellm_params_dict = dict(_existing_litellm_params.litellm_params)
 
             if model_params.litellm_params is None:
                 raise Exception("litellm_params not provided")
 
-            _new_litellm_params_dict = model_params.litellm_params.dict(
-                exclude_none=True
-            )
+            _new_litellm_params_dict = model_params.litellm_params.dict(exclude_none=True)
 
             ### ENCRYPT PARAMS ###
             for k, v in _new_litellm_params_dict.items():
@@ -785,10 +719,7 @@ async def update_model(
             for key, value in _mp.items():
                 if value is not None:
                     merged_dictionary[key] = value
-                elif (
-                    key in _existing_litellm_params_dict
-                    and _existing_litellm_params_dict[key] is not None
-                ):
+                elif key in _existing_litellm_params_dict and _existing_litellm_params_dict[key] is not None:
                     merged_dictionary[key] = _existing_litellm_params_dict[key]
                 else:
                     pass
@@ -827,9 +758,7 @@ async def update_model(
             return model_response
     except Exception as e:
         verbose_proxy_logger.exception(
-            "litellm.proxy.proxy_server.update_model(): Exception occured - {}".format(
-                str(e)
-            )
+            "litellm.proxy.proxy_server.update_model(): Exception occured - {}".format(str(e))
         )
         if isinstance(e, HTTPException):
             raise ProxyException(

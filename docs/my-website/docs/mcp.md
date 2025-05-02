@@ -2,6 +2,8 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import Image from '@theme/IdealImage';
 
+<!-- prereq: `auth_utils.is_request_body_safe` -->
+
 # /mcp [BETA] - Model Context Protocol
 
 ## Expose MCP tools on LiteLLM Proxy Server
