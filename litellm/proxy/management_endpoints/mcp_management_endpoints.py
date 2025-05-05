@@ -11,15 +11,21 @@ Endpoints here:
 import asyncio
 import json
 import uuid
-from typing import Dict, List, Literal, Optional, Union, cast
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, Query, Response, status
 from fastapi.responses import JSONResponse
 from prisma.models import LiteLLM_MCPServerTable
-from pydantic import BaseModel
 
 from litellm._logging import verbose_proxy_logger
 from litellm.constants import LITELLM_PROXY_ADMIN_NAME
+from litellm.proxy._experimental.mcp_server.db import (
+    db_create_mcp_server,
+    db_delete_mcp_server,
+    fetch_all_mcp_servers,
+    fetch_mcp_server,
+)
+from litellm.proxy._experimental.mcp_server.server import global_mcp_server_manager
 from litellm.proxy._types import (
     CommonProxyErrors,
     MCPServerCreateResponseObject,
@@ -46,7 +52,6 @@ from litellm.proxy.management_endpoints.team_endpoints import (
 )
 from litellm.proxy.management_helpers.audit_logs import create_object_audit_log
 from litellm.proxy.management_helpers.utils import management_endpoint_wrapper
-from litellm.proxy.utils import PrismaClient
 from litellm.types.router import (
     Deployment,
     DeploymentTypedDict,
@@ -57,79 +62,19 @@ from litellm.utils import get_utc_datetime
 
 router = APIRouter(prefix="/v1/mcp", tags=["mcp"])
 
-
-## Helpers
-async def fetch_all_mcp_servers(prisma_client: PrismaClient) -> List[LiteLLM_MCPServerTable]:
-    """
-    Returns all of the mcp servers from the db
-    """
-
-    mcp_servers = await prisma_client.db.litellm_mcpservertable.find_many()
-    return mcp_servers
-
-
-async def fetch_mcp_server(prisma_client: PrismaClient, server_id: str) -> Optional[LiteLLM_MCPServerTable]:
-    """
-    Returns the matching mcp server from the db iff exists
-    """
-
-    mcp_server: Optional[LiteLLM_MCPServerTable] = await prisma_client.db.litellm_mcpservertable.find_unique(
-        where={
-            "server_id": server_id,
-        }
-    )
-    return mcp_server
-
-
-async def fetch_mcp_servers(
-    prisma_client: PrismaClient, team_id: List[str], user_id: Optional[str] = None
-) -> List[LiteLLM_MCPServerTable]:
-    """
-    Get all the mcp servers filtered by the given user has access to.
-    """
-    ## GET ALL MEMBERSHIPS ##
-    if not isinstance(user_id, str):
-        user_id = str(user_id)
-
-    # team_memberships = await prisma_client.db.litellm_teammembership.find_many(
-    #     where=(
-    #         {"user_id": user_id, "team_id": {"in": team_id}} if user_id is not None else {"team_id": {"in": team_id}}
-    #     ),
-    #     include={"litellm_budget_table": True},
-    # )
-
-    # returned_tm: List[LiteLLM_TeamMembership] = []
-    # for tm in team_memberships:
-    #     returned_tm.append(LiteLLM_TeamMembership(**tm.model_dump()))
-
-    # TODO: complete
-    return []
-
-
-async def db_create_mcp_server(prisma_client: PrismaClient, data: NewMCPServerRequest) -> LiteLLM_MCPServerTable:
-    """
-    Create a new mcp server in the db
-    """
-    new_server = await prisma_client.db.litellm_mcpservertable.create(
-        data=data.model_dump(),
-    )
-    return new_server
-
-
-async def db_delete_mcp_server(prisma_client: PrismaClient, server_id: str) -> Optional[LiteLLM_MCPServerTable]:
-    """
-    Delete the mcp server from the db
-    """
-    deleted_server = await prisma_client.db.litellm_mcpservertable.delete(
-        where={
-            "server_id": server_id,
-        },
-    )
-    return deleted_server
-
-
 ## FastAPI Routes
 
+@router.get(
+    "/load",
+    description="Returns the mcp server list",
+    dependencies=[Depends(user_api_key_auth)],
+)
+async def load_servers_from_db(
+    user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
+):
+    # perform authz check to filter the mcp servers user has access to
+    mcp_servers = await global_mcp_server_manager.load_from_db()
+    return mcp_servers
 
 @router.get(
     "/server",

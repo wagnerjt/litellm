@@ -13,8 +13,10 @@ from typing import Any, Dict, List, Optional
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.types import Tool as MCPTool
+from prisma.models import LiteLLM_MCPServerTable
 
 from litellm._logging import verbose_logger
+from litellm.proxy._experimental.mcp_server.db import fetch_all_mcp_servers
 from litellm.types.mcp_server.mcp_server_manager import MCPInfo, MCPSSEServer
 
 
@@ -27,6 +29,8 @@ class MCPServerManager:
             {
                 "name": "zapier_mcp_server",
                 "url": "https://actions.zapier.com/mcp/sk-ak-2ew3bofIeQIkNoeKIdXrF1Hhhp/sse"
+                "transport": "sse",
+                "spec_version": "2025-03-26",
             },
             {
                 "name": "google_drive_mcp_server",
@@ -42,10 +46,25 @@ class MCPServerManager:
         }
         """
 
+    def add_server(self, server: MCPSSEServer):
+        """
+        Add a new MCP Server to the manager
+        """
+        verbose_logger.debug(f"Added MCP Server: {server.name}")
+        self.mcp_servers.append(server)
+
+    def get_servers(self) -> List[MCPSSEServer]:
+        """
+        Get the list of MCP Servers
+        """
+        return self.mcp_servers
+
     def load_servers_from_config(self, mcp_servers_config: Dict[str, Any]):
         """
         Load the MCP Servers from the config
         """
+        print("Loading MCP Servers from config-----")
+        verbose_logger.info("Loading MCP Servers from config-----")
         for server_name, server_config in mcp_servers_config.items():
             _mcp_info: dict = server_config.get("mcp_info", None) or {}
             mcp_info = MCPInfo(**_mcp_info)
@@ -66,6 +85,31 @@ class MCPServerManager:
         )
 
         self.initialize_tool_name_to_mcp_server_name_mapping()
+
+    async def load_from_db(self) -> List[MCPSSEServer]:
+        """
+        Load the MCP Servers from the database
+        """
+        # start reading from db to import
+        from litellm.proxy.proxy_server import prisma_client
+
+        if prisma_client is not None:
+            mcp_servers = await fetch_all_mcp_servers(prisma_client)
+            for db_server in mcp_servers:
+                server = MCPSSEServer(
+                    name=db_server.alias or "-",
+                    url=db_server.url,
+                    transport=db_server.transport,
+                    spec_version=db_server.spec_version,
+                    auth_type=db_server.auth_type,
+                    mcp_info=MCPInfo(
+                        server_name=db_server.alias or "-",
+                        description=db_server.description,
+                        logo_url="-",
+                    ),
+                )
+                self.mcp_servers.append(server)
+        return self.mcp_servers
 
     async def list_tools(self) -> List[MCPTool]:
         """
