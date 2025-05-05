@@ -9,7 +9,7 @@ class MCPInfo(TypedDict, total=False):
     logo_url: Optional[str]
 
 
-class MCPSSEServer(BaseModel):
+class MCPServer(BaseModel):
     name: str
     url: str
     transport: str

@@ -17,12 +17,12 @@ from prisma.models import LiteLLM_MCPServerTable
 
 from litellm._logging import verbose_logger
 from litellm.proxy._experimental.mcp_server.db import fetch_all_mcp_servers
-from litellm.types.mcp_server.mcp_server_manager import MCPInfo, MCPSSEServer
+from litellm.types.mcp_server.mcp_server_manager import MCPInfo, MCPServer
 
 
 class MCPServerManager:
     def __init__(self):
-        self.mcp_servers: List[MCPSSEServer] = []
+        self.mcp_servers: List[MCPServer] = []
         """
         eg.
         [
@@ -46,14 +46,14 @@ class MCPServerManager:
         }
         """
 
-    def add_server(self, server: MCPSSEServer):
+    def add_server(self, server: MCPServer):
         """
         Add a new MCP Server to the manager
         """
         verbose_logger.debug(f"Added MCP Server: {server.name}")
         self.mcp_servers.append(server)
 
-    def get_servers(self) -> List[MCPSSEServer]:
+    def get_servers(self) -> List[MCPServer]:
         """
         Get the list of MCP Servers
         """
@@ -71,7 +71,7 @@ class MCPServerManager:
             mcp_info["server_name"] = server_name
             mcp_info["description"] = server_config.get("description", None)
             self.mcp_servers.append(
-                MCPSSEServer(
+                MCPServer(
                     name=server_name,
                     url=server_config["url"],
                     transport=server_config.get("transport", "sse"),
@@ -86,7 +86,7 @@ class MCPServerManager:
 
         self.initialize_tool_name_to_mcp_server_name_mapping()
 
-    async def load_from_db(self) -> List[MCPSSEServer]:
+    async def load_from_db(self) -> List[MCPServer]:
         """
         Load the MCP Servers from the database
         """
@@ -96,7 +96,7 @@ class MCPServerManager:
         if prisma_client is not None:
             mcp_servers = await fetch_all_mcp_servers(prisma_client)
             for db_server in mcp_servers:
-                server = MCPSSEServer(
+                server = MCPServer(
                     name=db_server.alias or "-",
                     url=db_server.url,
                     transport=db_server.transport,
@@ -127,30 +127,36 @@ class MCPServerManager:
 
         return list_tools_result
 
-    async def _get_tools_from_server(self, server: MCPSSEServer) -> List[MCPTool]:
+    async def _get_tools_from_server(self, server: MCPServer) -> List[MCPTool]:
         """
         Helper method to get tools from a single MCP server.
 
         Args:
-            server (MCPSSEServer): The server to query tools from
+            server (MCPServer): The server to query tools from
 
         Returns:
             List[MCPTool]: List of tools available on the server
         """
         verbose_logger.debug(f"Connecting to url: {server.url}")
 
-        async with sse_client(url=server.url) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
+        verbose_logger.info("_get_tools_from_server...")
+        # send transport to connect to the server
+        if server.transport is None or server.transport == "sse":
+            async with sse_client(url=server.url) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
 
-                tools_result = await session.list_tools()
-                verbose_logger.debug(f"Tools from {server.name}: {tools_result}")
+                    tools_result = await session.list_tools()
+                    verbose_logger.debug(f"Tools from {server.name}: {tools_result}")
 
-                # Update tool to server mapping
-                for tool in tools_result.tools:
-                    self.tool_name_to_mcp_server_name_mapping[tool.name] = server.name
+                    # Update tool to server mapping
+                    for tool in tools_result.tools:
+                        self.tool_name_to_mcp_server_name_mapping[tool.name] = server.name
 
-                return tools_result.tools
+                    return tools_result.tools
+        elif server.transport == "http":
+            # TODO: implement http transport
+            pass
 
     def initialize_tool_name_to_mcp_server_name_mapping(self):
         """
@@ -187,7 +193,7 @@ class MCPServerManager:
                 await session.initialize()
                 return await session.call_tool(name, arguments)
 
-    def _get_mcp_server_from_tool_name(self, tool_name: str) -> Optional[MCPSSEServer]:
+    def _get_mcp_server_from_tool_name(self, tool_name: str) -> Optional[MCPServer]:
         """
         Get the MCP Server from the tool name
         """
