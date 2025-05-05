@@ -742,7 +742,7 @@ jobs:
             pip install "pytest-asyncio==0.21.1"
             pip install "respx==0.21.1"
             pip install "pydantic==2.10.2"
-            pip install "mcp==1.5.0"
+            pip install "mcp==1.7.1"
       # Run pytest and generate JUnit XML report
       - run:
           name: Run tests
@@ -832,7 +832,7 @@ jobs:
             pip install "respx==0.21.1"
             pip install "hypercorn==0.17.3"
             pip install "pydantic==2.10.2"
-            pip install "mcp==1.5.0"
+            pip install "mcp==1.7.1"
       # Run pytest and generate JUnit XML report
       - run:
           name: Run tests
