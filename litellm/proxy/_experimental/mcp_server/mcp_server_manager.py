@@ -9,6 +9,7 @@ This is a Proxy
 import asyncio
 import json
 from typing import Any, Dict, List, Optional
+import uuid
 
 from mcp import ClientSession
 from mcp.client.sse import sse_client
@@ -22,17 +23,17 @@ from litellm.types.mcp_server.mcp_server_manager import MCPInfo, MCPServer
 
 class MCPServerManager:
     def __init__(self):
-        self.mcp_servers: List[MCPServer] = []
+        self.registry: Dict[str, MCPServer] = {}
         """
         eg.
         [
-            {
+            "uuid-1": {
                 "name": "zapier_mcp_server",
                 "url": "https://actions.zapier.com/mcp/sk-ak-2ew3bofIeQIkNoeKIdXrF1Hhhp/sse"
                 "transport": "sse",
                 "spec_version": "2025-03-26",
             },
-            {
+            "uuid-2": {
                 "name": "google_drive_mcp_server",
                 "url": "https://actions.zapier.com/mcp/sk-ak-2ew3bofIeQIkNoeKIdXrF1Hhhp/sse"
             }
@@ -46,43 +47,33 @@ class MCPServerManager:
         }
         """
 
-    def add_server(self, server: MCPServer):
-        """
-        Add a new MCP Server to the manager
-        """
-        verbose_logger.debug(f"Added MCP Server: {server.name}")
-        self.mcp_servers.append(server)
-
-    def get_servers(self) -> List[MCPServer]:
+    def get_registry(self) -> Dict[str, MCPServer]:
         """
         Get the list of MCP Servers
         """
-        return self.mcp_servers
+        return self.registry
 
     def load_servers_from_config(self, mcp_servers_config: Dict[str, Any]):
         """
         Load the MCP Servers from the config
         """
-        print("Loading MCP Servers from config-----")
         verbose_logger.info("Loading MCP Servers from config-----")
         for server_name, server_config in mcp_servers_config.items():
             _mcp_info: dict = server_config.get("mcp_info", None) or {}
             mcp_info = MCPInfo(**_mcp_info)
             mcp_info["server_name"] = server_name
             mcp_info["description"] = server_config.get("description", None)
-            self.mcp_servers.append(
-                MCPServer(
-                    name=server_name,
-                    url=server_config["url"],
-                    transport=server_config.get("transport", "sse"),
-                    spec_version=server_config.get("spec_version", "2025-03-26"),
-                    auth_type=server_config.get("auth_type", None),
-                    mcp_info=mcp_info,
-                )
+            new_server = MCPServer(
+                name=server_name,
+                url=server_config["url"],
+                transport=server_config.get("transport", "sse"),
+                spec_version=server_config.get("spec_version", "2025-03-26"),
+                auth_type=server_config.get("auth_type", None),
+                mcp_info=mcp_info,
             )
-        verbose_logger.debug(
-            f"Loaded MCP Servers: {json.dumps(self.mcp_servers, indent=4, default=str)}"
-        )
+            server_id = str(uuid.uuid4())
+            self.registry[server_id] = new_server
+        verbose_logger.debug(f"Loaded MCP Servers: {json.dumps(self.registry, indent=4, default=str)}")
 
         self.initialize_tool_name_to_mcp_server_name_mapping()
 
@@ -96,20 +87,20 @@ class MCPServerManager:
         if prisma_client is not None:
             mcp_servers = await fetch_all_mcp_servers(prisma_client)
             for db_server in mcp_servers:
-                server = MCPServer(
-                    name=db_server.alias or "-",
+                new_server = MCPServer(
+                    name=db_server.alias or "unknown",
                     url=db_server.url,
                     transport=db_server.transport,
                     spec_version=db_server.spec_version,
                     auth_type=db_server.auth_type,
                     mcp_info=MCPInfo(
-                        server_name=db_server.alias or "-",
+                        server_name=db_server.alias or db_server.server_id,
                         description=db_server.description,
-                        logo_url="-",
+                        logo_url=None,
                     ),
                 )
-                self.mcp_servers.append(server)
-        return self.mcp_servers
+                self.registry[db_server.server_id] = new_server
+        return list(self.registry.values())
 
     async def list_tools(self) -> List[MCPTool]:
         """
@@ -121,7 +112,7 @@ class MCPServerManager:
         list_tools_result: List[MCPTool] = []
         verbose_logger.debug("SSE SERVER MANAGER LISTING TOOLS")
 
-        for server in self.mcp_servers:
+        for _, server in self.registry.items():
             tools = await self._get_tools_from_server(server)
             list_tools_result.extend(tools)
 
@@ -156,7 +147,7 @@ class MCPServerManager:
                     return tools_result.tools
         elif server.transport == "http":
             # TODO: implement http transport
-            pass
+            return []
 
     def initialize_tool_name_to_mcp_server_name_mapping(self):
         """
@@ -176,7 +167,7 @@ class MCPServerManager:
         """
         Call list_tools for each server and update the tool name to MCP server name mapping
         """
-        for server in self.mcp_servers:
+        for _, server in self.registry.items():
             tools = await self._get_tools_from_server(server)
             for tool in tools:
                 self.tool_name_to_mcp_server_name_mapping[tool.name] = server.name
@@ -198,7 +189,7 @@ class MCPServerManager:
         Get the MCP Server from the tool name
         """
         if tool_name in self.tool_name_to_mcp_server_name_mapping:
-            for server in self.mcp_servers:
+            for _, server in self.registry.items():
                 if server.name == self.tool_name_to_mcp_server_name_mapping[tool_name]:
                     return server
         return None
