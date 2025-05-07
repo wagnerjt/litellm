@@ -53,6 +53,7 @@ import {
   MCPToolsViewerProps,
   CallMCPToolResponse,
 } from "./types";
+import { isAdminRole } from "@/utils/roles";
 
 const TRANSPORT = {
   SSE: "sse",
@@ -82,6 +83,30 @@ const createMCPServer = (server: MCPServer) => {
 };
 
 const handleEdit = (server_id: string) => {};
+
+interface CreateMCPServerProps {
+  userRole: string;
+  setServerCreate: (value: boolean) => void;
+}
+
+const CreateMCPServer: React.FC<CreateMCPServerProps> = ({
+  userRole,
+  setServerCreate,
+}) => {
+  const [isModalAddVisible, setModalAddVisible] = useState(false);
+
+  if (!isAdminRole(userRole)) {
+    return null;
+  }
+
+  return (
+    <div>
+      <Button className="mx-auto" onClick={() => setServerCreate(true)}>
+        + Add New MCP Server
+      </Button>
+    </div>
+  );
+};
 
 interface DeleteModalProps {
   isModalOpen: boolean;
@@ -316,7 +341,7 @@ const MCPServers: React.FC<MCPServerProps> = ({
                       : "N/A"}
                   </TableCell>
                   <TableCell>
-                    {userRole == "Admin" ? (
+                    {isAdminRole(userRole) ? (
                       <>
                         <Icon
                           icon={PencilAltIcon}
@@ -343,6 +368,12 @@ const MCPServers: React.FC<MCPServerProps> = ({
         title="Delete MCP Server"
         confirmDelete={confirmDelete}
         cancelDelete={cancelDelete}
+      />
+      <CreateMCPServer
+        userRole={userRole}
+        setServerCreate={(value) => {
+          setEditServer(value);
+        }}
       />
     </div>
   );
