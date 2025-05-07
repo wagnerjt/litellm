@@ -784,20 +784,38 @@ class LiteLLM_ProxyModelTable(LiteLLMPydanticObjectBase):
         return values
 
 
-# MCP Server Types
-# class LiteLLM_ModelTable(LiteLLMPydanticObjectBase):
-#     model_aliases: Optional[Union[str, dict]] = None  # json dump the dict
-#     created_by: str
-#     updated_by: str
-
-#     model_config = ConfigDict(protected_namespaces=())
+# MCP Types
+class SpecialMCPServerNames(str, enum.Enum):
+    all_team_servers = "all-team-mcpservers"
+    all_proxy_servers = "all-proxy-mcpservers"
+    no_default_servers = "no-default-mcpservers"
 
 
+class MCPTransport(str, enum.Enum):
+    sse = "sse"
+    http = "http"
+
+
+class MCPSpecVersion(str, enum.Enum):
+    nov_2024 = "2024-11-05"
+    mar_2025 = "2025-03-26"
+
+
+class MCPAuthType(str, enum.Enum):
+    api_key = "API_KEY"
+    bearer_token = "BEARER_TOKEN"
+    basic = "BASIC"
+
+
+# MCP Literals
+MCPTransportType = Literal[MCPTransport.sse, MCPTransport.http]
+
+# MCP Proxy Request Types
 class MCPServerCreateResponseObject(TypedDict):
     id: str
     name: str
     description: str
-    transport: Literal["sse", "http"]
+    transport: MCPTransportType
     api_base: str
     created_by: str
     updated_by: str
@@ -807,8 +825,8 @@ class NewMCPServerRequest(LiteLLMPydanticObjectBase):
     server_id: Optional[str] = None
     alias: Optional[str] = None
     description: Optional[str] = None
-    transport: Literal["sse", "http"] = "http"
-    spec_version: Literal["2025-03-26", "2024-11-05"] = "2025-03-26"
+    transport: MCPTransportType = MCPTransport.sse
+    spec_version: Literal[MCPSpecVersion.mar_2025, MCPSpecVersion.nov_2024] = MCPSpecVersion.mar_2025
     auth_type: Optional[Literal["API_KEY", "BEARER_TOKEN", "BASIC"]] = None
     url: str
 
