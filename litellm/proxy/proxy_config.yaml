@@ -1,11 +1,9 @@
 model_list:
-  - model_name: computer-user-agent
+  - model_name: openai/gpt-4o
     litellm_params:
-      model: azure/computer-use-preview
-      truncation: auto
-      api_key: os.environ/AZURE_RESPONSES_OPENAI_API_KEY
-      api_base: os.environ/AZURE_RESPONSES_OPENAI_ENDPOINT
-      api_version: os.environ/AZURE_RESPONSES_OPENAI_API_VERSION
-general_settings:
-  store_prompts_in_spend_logs: true
-  block_robots: true
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+
+litellm_settings:
+    json_logs: true
