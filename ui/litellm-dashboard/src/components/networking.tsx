@@ -13,6 +13,13 @@ if (isLocal != true) {
   console.log = function() {};
 }
 
+const REQUEST_METHOD = {
+  GET: "GET",
+  POST: "POST",
+  PUT: "PUT",
+  DELETE: "DELETE",
+};
+
 export const DEFAULT_ORGANIZATION = "default_organization";
 
 export interface Model {
@@ -4390,6 +4397,67 @@ export const updateInternalUserSettings = async (accessToken: string, settings: 
     return data;
   } catch (error) {
     console.error("Failed to update internal user settings:", error);
+    throw error;
+  }
+};
+
+export const fetchMCPServers = async (accessToken: string) => {
+  try {
+    // Construct base URL
+    let url = proxyBaseUrl ? `${proxyBaseUrl}/v1/mcp/server` : `/v1/mcp/server`;
+
+    console.log("Fetching MCP servers from:", url);
+
+    const response = await fetch(url, {
+      method: REQUEST_METHOD.GET,
+      headers: {
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      handleError(errorData);
+      throw new Error("Network response was not ok");
+    }
+
+    const data = await response.json();
+    console.log("Fetched MCP servers:", data);
+    return data;
+  } catch (error) {
+    console.error("Failed to fetch MCP servers:", error);
+    throw error;
+  }
+};
+
+export const deleteMCPServer = async (
+  accessToken: String,
+  serverId: String
+) => {
+  try {
+    const url =
+      (proxyBaseUrl ? `${proxyBaseUrl}` : "") + `/v1/mcp/server/${serverId}`;
+    console.log("in deleteMCPServer:", serverId);
+    const response = await fetch(url, {
+      method: REQUEST_METHOD.DELETE,
+      headers: {
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      handleError(errorData);
+      throw new Error("Network response was not ok");
+    }
+    const data = await response.json();
+    console.log(data);
+    return data;
+    // Handle success - you might want to update some state or UI based on the created key
+  } catch (error) {
+    console.error("Failed to delete key:", error);
     throw error;
   }
 };

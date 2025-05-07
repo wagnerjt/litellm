@@ -263,7 +263,7 @@ if MCP_AVAILABLE:
         ]
         """
         list_tools_result: List[ListMCPToolsRestAPIResponseObject] = []
-        for server in global_mcp_server_manager.mcp_servers:
+        for server_id, server in global_mcp_server_manager.get_registry().items():
             try:
                 tools = await global_mcp_server_manager._get_tools_from_server(server)
                 for tool in tools:
